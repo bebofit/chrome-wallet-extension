@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Divider,
   Tooltip,
@@ -14,7 +14,13 @@ import { useNavigate } from "react-router-dom";
 import logo from "../noImg.png";
 import { CHAINS_CONFIG, MumbaiTestnet } from "../services/chains";
 import { ethers } from "ethers";
-import { getTokenBalances, getBalance, estimateGas } from "../services/alchemy";
+import {
+  getTokenBalances,
+  getBalance,
+  estimateGas,
+  sendTransactionAlc,
+  getTransactionReceipt,
+} from "../services/alchemy";
 
 function WalletView({
   wallet,
@@ -47,6 +53,53 @@ function WalletView({
     },
     [amountToSend, selectedChain]
   );
+
+  async function sendTransaction(to, amount) {
+    setProcessing(true);
+    try {
+      const trxHash = await sendTransactionAlc(to, amount, selectedChain);
+      if (!trxHash) {
+        alert("Transaction Failed");
+        throw new Error("Transaction Failed");
+      } else {
+        setHash(trxHash);
+      }
+      const receipt = await getTransactionReceipt(trxHash, selectedChain);
+      if (Number(receipt?.status || 0) === 1) {
+        alert("Transaction Succeeded");
+      } else {
+        alert("Transaction Failed or still pending");
+      }
+      setHash(null);
+      setProcessing(false);
+      setAmountToSend(null);
+      setSendToAddress(null);
+      setGas(0);
+    } catch (err) {
+      console.log(err);
+      setHash(null);
+      setProcessing(false);
+      setAmountToSend(null);
+      setSendToAddress(null);
+      setGas(0);
+    }
+  }
+
+  const processer = useMemo(() => {
+    console.log(processing);
+    return processing && <Spin />;
+  }, [processing]);
+
+  const hasher = useMemo(() => {
+    console.log(hash);
+    return (
+      hash && (
+        <Tooltip title={hash}>
+          <p>Hover For Tx Hash</p>
+        </Tooltip>
+      )
+    );
+  }, [hash]);
 
   const items = [
     {
@@ -118,7 +171,6 @@ function WalletView({
             />
           </div>
           {gas > 0 && <h3>Estimated Gas: {gas}</h3>}
-
           <Button
             style={{ width: "100%", marginTop: "20px", marginBottom: "20px" }}
             type="primary"
@@ -126,70 +178,25 @@ function WalletView({
           >
             Send Tokens
           </Button>
-          {processing && (
-            <>
-              <Spin />
-              {hash && (
-                <Tooltip title={hash}>
-                  <p>Hover For Tx Hash</p>
-                </Tooltip>
-              )}
-            </>
-          )}
+
+          {processer}
+          {hasher}
         </>
       ),
     },
   ];
 
-  async function sendTransaction(to, amount) {
-    const chain = CHAINS_CONFIG[selectedChain];
+  useEffect(() => {
+    // interval every second to get balance
+    const interval = setInterval(async () => {
+      const balance = await getBalance(wallet, selectedChain);
+      setBalance(balance);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedChain, wallet]);
 
-    const provider = new ethers.JsonRpcProvider(chain.rpcUrl);
-
-    const privateKey = ethers.Wallet.fromPhrase(seedPhrase).privateKey;
-
-    const wallet = new ethers.Wallet(privateKey, provider);
-
-    const tx = {
-      to: to,
-      value: ethers.parseEther(amount.toString()),
-    };
-
-    setProcessing(true);
-    try {
-      const transaction = await wallet.sendTransaction(tx);
-
-      setHash(transaction.hash);
-
-      const receipt = await transaction.wait();
-      setHash(null);
-      setProcessing(false);
-      setAmountToSend(null);
-      setSendToAddress(null);
-      setGas(0);
-
-      if (receipt.status === 1) {
-        getAccountTokens();
-      } else {
-        console.log("failed");
-      }
-    } catch (err) {
-      console.log(err);
-      setHash(null);
-      setProcessing(false);
-      setAmountToSend(null);
-      setSendToAddress(null);
-      setGas(0);
-    }
-  }
-
-  async function getAccountTokens() {
+  const getAccountTokens = useCallback(async () => {
     setFetching(true);
-
-    // const tokens = await getTokenBalances(
-    //   "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-    //   "0x1"
-    // );
 
     const tokens = await getTokenBalances(wallet, selectedChain);
 
@@ -197,12 +204,8 @@ function WalletView({
       setTokens(tokens);
     }
 
-    const balance = await getBalance(wallet, selectedChain);
-
-    setBalance(balance);
-
     setFetching(false);
-  }
+  }, [selectedChain, wallet]);
 
   function logout() {
     setSeedPhrase(null);
@@ -219,15 +222,7 @@ function WalletView({
     setTokens(null);
     setBalance(0);
     getAccountTokens();
-  }, []);
-
-  useEffect(() => {
-    if (!wallet) return;
-    setGas(0);
-    setTokens(null);
-    setBalance(0);
-    getAccountTokens();
-  }, [selectedChain, wallet]);
+  }, [getAccountTokens, selectedChain, wallet]);
 
   return (
     <>
