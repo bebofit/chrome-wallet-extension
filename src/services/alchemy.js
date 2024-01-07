@@ -37,7 +37,7 @@ export async function getBalance(address, chainId) {
     : 0;
 }
 
-export async function sendTransactionAlc(to, amount, chainId) {
+export async function sendTransactionAlc(seedPhrase, to, amount, chainId) {
   try {
     const baseURL = CHAINS_CONFIG[chainId]?.rpcUrl;
     if (!baseURL) {
@@ -46,9 +46,7 @@ export async function sendTransactionAlc(to, amount, chainId) {
     }
     // http provider
     const web3 = new Web3(baseURL);
-    const mnemonicWallet = ethers.Wallet.fromPhrase(
-      process.env.REACT_APP_METAMORPHIC
-    );
+    const mnemonicWallet = ethers.Wallet.fromPhrase(seedPhrase);
     const nonce = await web3.eth.getTransactionCount(
       mnemonicWallet.address,
       "latest"

@@ -57,7 +57,12 @@ function WalletView({
   async function sendTransaction(to, amount) {
     setProcessing(true);
     try {
-      const trxHash = await sendTransactionAlc(to, amount, selectedChain);
+      const trxHash = await sendTransactionAlc(
+        seedPhrase,
+        to,
+        amount,
+        selectedChain
+      );
       if (!trxHash) {
         alert("Transaction Failed");
         throw new Error("Transaction Failed");
